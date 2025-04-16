@@ -16,10 +16,9 @@
 
 package io.prometheus.jmx;
 
-import java.util.Collection;
-import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -30,42 +29,20 @@ import java.util.concurrent.ConcurrentHashMap;
  */
 public class MatchedRulesCache {
 
-    private final Map<JmxCollector.Rule, Map<String, MatchedRule>> cachedRules;
+    private final Map<CacheKey, MatchedRule> cache;
 
-    /**
-     * Constructor
-     *
-     * @param rules rules
-     */
-    public MatchedRulesCache(Collection<JmxCollector.Rule> rules) {
-        this.cachedRules = new HashMap<>(rules.size());
-        for (JmxCollector.Rule rule : rules) {
-            this.cachedRules.put(rule, new ConcurrentHashMap<>());
-        }
+    /** Constructs an empty cache */
+    public MatchedRulesCache() {
+        this.cache = new ConcurrentHashMap<>();
     }
 
-    /**
-     * Method to put a matched rule in the cache
-     *
-     * @param rule rule
-     * @param cacheKey cacheKey
-     * @param matchedRule matchedRule
-     */
     public void put(
-            final JmxCollector.Rule rule, final String cacheKey, final MatchedRule matchedRule) {
-        Map<String, MatchedRule> cachedRulesForRule = cachedRules.get(rule);
-        cachedRulesForRule.put(cacheKey, matchedRule);
+            final String beanName, final String attributeName, final MatchedRule matchedRule) {
+        cache.put(new CacheKey(beanName, attributeName), matchedRule);
     }
 
-    /**
-     * Method to get a MatchedRule from the cache
-     *
-     * @param rule rule
-     * @param cacheKey cacheKey
-     * @return the MatchedRule
-     */
-    public MatchedRule get(final JmxCollector.Rule rule, final String cacheKey) {
-        return cachedRules.get(rule).get(cacheKey);
+    public MatchedRule get(final String beanName, final String attributeName) {
+        return cache.get(new CacheKey(beanName, attributeName));
     }
 
     /**
@@ -75,15 +52,9 @@ public class MatchedRulesCache {
      * @param stalenessTracker stalenessTracker
      */
     public void evictStaleEntries(final StalenessTracker stalenessTracker) {
-        for (Map.Entry<JmxCollector.Rule, Map<String, MatchedRule>> entry :
-                cachedRules.entrySet()) {
-            JmxCollector.Rule rule = entry.getKey();
-            Map<String, MatchedRule> cachedRulesForRule = entry.getValue();
-
-            for (String cacheKey : cachedRulesForRule.keySet()) {
-                if (!stalenessTracker.contains(rule, cacheKey)) {
-                    cachedRulesForRule.remove(cacheKey);
-                }
+        for (CacheKey key : cache.keySet()) {
+            if (!stalenessTracker.isFresh(key)) {
+                cache.remove(key);
             }
         }
     }
@@ -91,36 +62,21 @@ public class MatchedRulesCache {
     /** Class to implement StalenessTracker */
     public static class StalenessTracker {
 
-        private final Map<JmxCollector.Rule, Set<String>> lastCachedEntries = new HashMap<>();
+        private final Set<CacheKey> freshEntries;
 
         /** Constructor */
         public StalenessTracker() {
-            // INTENTIONALLY BLANK
+            this.freshEntries = new HashSet<>();
         }
 
-        /**
-         * Method to add a Rule
-         *
-         * @param rule rule
-         * @param cacheKey cacheKey
-         */
-        public void add(final JmxCollector.Rule rule, final String cacheKey) {
-            Set<String> lastCachedEntriesForRule =
-                    lastCachedEntries.computeIfAbsent(rule, k -> new HashSet<>());
-            lastCachedEntriesForRule.add(cacheKey);
+        /** Method to add a Rule */
+        public void markAsFresh(final String beanName, final String attributeName) {
+            freshEntries.add(new CacheKey(beanName, attributeName));
         }
 
-        /**
-         * Method to return if a Rule is stale
-         *
-         * @param rule rule
-         * @param cacheKey cacheKey
-         * @return true if the stale, else false
-         */
-        public boolean contains(final JmxCollector.Rule rule, final String cacheKey) {
-            Set<String> lastCachedEntriesForRule = lastCachedEntries.get(rule);
-            return (lastCachedEntriesForRule != null)
-                    && lastCachedEntriesForRule.contains(cacheKey);
+        /** Method to return if a Rule is stale */
+        boolean isFresh(final CacheKey key) {
+            return freshEntries.contains(key);
         }
 
         /**
@@ -128,12 +84,32 @@ public class MatchedRulesCache {
          *
          * @return the count of stale rules
          */
-        public long cachedCount() {
-            long count = 0;
-            for (Set<String> cacheKeys : lastCachedEntries.values()) {
-                count += cacheKeys.size();
-            }
-            return count;
+        public long freshCount() {
+            return freshEntries.size();
+        }
+    }
+
+    private static class CacheKey {
+        private final String beanName;
+        private final String attributeName;
+
+        public CacheKey(String beanName, String attributeName) {
+            this.beanName = beanName;
+            this.attributeName = attributeName;
+        }
+
+        @Override
+        public boolean equals(Object o) {
+            if (this == o) return true;
+            if (o == null || getClass() != o.getClass()) return false;
+            CacheKey cacheKey = (CacheKey) o;
+            return Objects.equals(beanName, cacheKey.beanName)
+                    && Objects.equals(attributeName, cacheKey.attributeName);
+        }
+
+        @Override
+        public int hashCode() {
+            return Objects.hash(beanName, attributeName);
         }
     }
 }
