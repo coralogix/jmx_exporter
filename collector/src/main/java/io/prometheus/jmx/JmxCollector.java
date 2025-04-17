@@ -20,6 +20,7 @@ import static java.lang.String.format;
 import static java.util.logging.Level.FINE;
 import static java.util.logging.Level.SEVERE;
 
+import io.prometheus.jmx.MatchedRulesCache.CacheKey;
 import io.prometheus.jmx.logger.Logger;
 import io.prometheus.jmx.logger.LoggerFactory;
 import io.prometheus.metrics.core.metrics.Counter;
@@ -571,11 +572,10 @@ public class JmxCollector implements MultiCollector {
         }
 
         // Add the matched rule to the cached rules and tag it as not stale
-        private void addToCache(
-                final String beanName, final String attributeName, final MatchedRule matchedRule) {
-            if (config.rulesCache != null) {
-                config.rulesCache.put(beanName, attributeName, matchedRule);
-                stalenessTracker.markAsFresh(beanName, attributeName);
+        private void addToCache(final CacheKey cacheKey, final MatchedRule matchedRule) {
+            if (config.rulesCache != null && cacheKey != null) {
+                config.rulesCache.put(cacheKey, matchedRule);
+                stalenessTracker.markAsFresh(cacheKey);
             }
         }
 
@@ -641,25 +641,26 @@ public class JmxCollector implements MultiCollector {
                 String attrDescription,
                 Object beanValue) {
 
-            String beanName =
-                    domain
-                            + angleBrackets(beanProperties.toString())
-                            + angleBrackets(attrKeys.toString());
+            MatchedRule matchedRule = MatchedRule.unmatched();
 
+            CacheKey cacheKey = null;
             MatchedRule cachedRule = null;
 
             if (config.rulesCache != null) {
-                cachedRule = config.rulesCache.get(beanName, attrName);
-            }
-
-            MatchedRule matchedRule = MatchedRule.unmatched();
-
-            if (cachedRule != null) {
-                stalenessTracker.markAsFresh(beanName, attrName);
-                matchedRule = cachedRule;
+                cacheKey = new CacheKey(domain, beanProperties, attrKeys, attrName);
+                cachedRule = config.rulesCache.get(cacheKey);
+                if (cachedRule != null) {
+                    stalenessTracker.markAsFresh(cacheKey);
+                    matchedRule = cachedRule;
+                }
             }
 
             if (matchedRule.isUnmatched()) {
+
+                String beanName =
+                        domain
+                                + angleBrackets(beanProperties.toString())
+                                + angleBrackets(attrKeys.toString());
 
                 // Build the HELP string from the bean metadata.
                 String help =
@@ -740,7 +741,7 @@ public class JmxCollector implements MultiCollector {
                                         rule.type,
                                         attributesAsLabelsWithValues);
                         if (rule.cache) {
-                            addToCache(beanName, attrName, matchedRule);
+                            addToCache(cacheKey, matchedRule);
                         }
                         break;
                     }
@@ -799,14 +800,14 @@ public class JmxCollector implements MultiCollector {
                                     value,
                                     rule.valueFactor);
                     if (rule.cache) {
-                        addToCache(beanName, attrName, matchedRule);
+                        addToCache(cacheKey, matchedRule);
                     }
                     break;
                 }
             }
 
             if (matchedRule.isUnmatched()) {
-                addToCache(beanName, attrName, matchedRule);
+                addToCache(cacheKey, matchedRule);
                 return;
             }
 
@@ -822,8 +823,10 @@ public class JmxCollector implements MultiCollector {
             } else {
                 LOGGER.log(
                         FINE,
-                        "Ignoring unsupported bean: %s%s: %s ",
-                        beanName,
+                        "Ignoring unsupported bean: %s%s%s%s: %s ",
+                        domain,
+                        angleBrackets(beanProperties.toString()),
+                        angleBrackets(attrKeys.toString()),
                         attrName,
                         beanValue);
                 return;

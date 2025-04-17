@@ -16,10 +16,7 @@
 
 package io.prometheus.jmx;
 
-import java.util.HashSet;
-import java.util.Map;
-import java.util.Objects;
-import java.util.Set;
+import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
@@ -39,24 +36,21 @@ public class MatchedRulesCache {
     /**
      * Adds a rule match to the cache
      *
-     * @param beanName
-     * @param attributeName
+     * @param key
      * @param matchedRule
      */
-    public void put(
-            final String beanName, final String attributeName, final MatchedRule matchedRule) {
-        cache.put(new CacheKey(beanName, attributeName), matchedRule);
+    public void put(final CacheKey key, final MatchedRule matchedRule) {
+        cache.put(key, matchedRule);
     }
 
     /**
      * Retrieves the cached MatchedRule
      *
-     * @param beanName
-     * @param attributeName
-     * @return
+     * @param key
+     * @return a MatchedRule from cache or null
      */
-    public MatchedRule get(final String beanName, final String attributeName) {
-        return cache.get(new CacheKey(beanName, attributeName));
+    public MatchedRule get(final CacheKey key) {
+        return cache.get(key);
     }
 
     /**
@@ -87,11 +81,11 @@ public class MatchedRulesCache {
         }
 
         /** Marks a cache key as fresh (not stale) */
-        public void markAsFresh(final String beanName, final String attributeName) {
-            freshEntries.add(new CacheKey(beanName, attributeName));
+        public void markAsFresh(final CacheKey key) {
+            freshEntries.add(key);
         }
 
-        /** Returns true if {@link #markAsFresh(String, String)) was called for that key */
+        /** Returns true if {@link #markAsFresh(CacheKey)) was called for that key */
         boolean isFresh(final CacheKey key) {
             return freshEntries.contains(key);
         }
@@ -106,13 +100,21 @@ public class MatchedRulesCache {
         }
     }
 
-    private static class CacheKey {
-        private final String beanName;
-        private final String attributeName;
+    public static class CacheKey {
+        private final String domain;
+        private final LinkedHashMap<String, String> beanProperties;
+        private final LinkedList<String> attrKeys;
+        private final String attrName;
 
-        public CacheKey(String beanName, String attributeName) {
-            this.beanName = beanName;
-            this.attributeName = attributeName;
+        public CacheKey(
+                String domain,
+                LinkedHashMap<String, String> beanProperties,
+                LinkedList<String> attrKeys,
+                String attrName) {
+            this.domain = domain;
+            this.beanProperties = beanProperties;
+            this.attrKeys = attrKeys;
+            this.attrName = attrName;
         }
 
         @Override
@@ -120,13 +122,15 @@ public class MatchedRulesCache {
             if (this == o) return true;
             if (o == null || getClass() != o.getClass()) return false;
             CacheKey cacheKey = (CacheKey) o;
-            return Objects.equals(beanName, cacheKey.beanName)
-                    && Objects.equals(attributeName, cacheKey.attributeName);
+            return Objects.equals(domain, cacheKey.domain)
+                    && Objects.equals(beanProperties, cacheKey.beanProperties)
+                    && Objects.equals(attrKeys, cacheKey.attrKeys)
+                    && Objects.equals(attrName, cacheKey.attrName);
         }
 
         @Override
         public int hashCode() {
-            return Objects.hash(beanName, attributeName);
+            return Objects.hash(domain, beanProperties, attrKeys, attrName);
         }
     }
 }
