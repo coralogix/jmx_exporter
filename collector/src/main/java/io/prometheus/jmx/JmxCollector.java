@@ -608,6 +608,10 @@ public class JmxCollector implements MultiCollector {
                 fullname = fullname.toLowerCase();
             }
 
+            if (fullname.endsWith("_total")){
+                type = "COUNTER";
+            }
+
             List<String> labelNames = new ArrayList<>();
             List<String> labelValues = new ArrayList<>();
             if (beanProperties.size() > 1) {
@@ -755,6 +759,11 @@ public class JmxCollector implements MultiCollector {
                         name = name.toLowerCase();
                     }
 
+                    String type = rule.type;
+                    if (name.endsWith("_total")){
+                        type = "COUNTER";
+                    }
+
                     // Set the help.
                     if (rule.help != null) {
                         help = matcher.replaceAll(rule.help);
@@ -793,7 +802,7 @@ public class JmxCollector implements MultiCollector {
                             new MatchedRule(
                                     name,
                                     matchName,
-                                    rule.type,
+                                    type,
                                     help,
                                     labelNames,
                                     labelValues,
