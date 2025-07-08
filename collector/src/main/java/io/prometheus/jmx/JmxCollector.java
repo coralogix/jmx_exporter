@@ -118,6 +118,7 @@ public class JmxCollector implements MultiCollector {
         boolean ssl = false;
         boolean lowercaseOutputName;
         boolean lowercaseOutputLabelNames;
+        boolean inferCounterTypeFromName;
         final List<ObjectName> includeObjectNames = new ArrayList<>();
         final List<ObjectName> excludeObjectNames = new ArrayList<>();
         ObjectNameAttributeFilter objectNameAttributeFilter;
@@ -327,6 +328,10 @@ public class JmxCollector implements MultiCollector {
 
         if (yamlConfig.containsKey("lowercaseOutputLabelNames")) {
             cfg.lowercaseOutputLabelNames = (Boolean) yamlConfig.get("lowercaseOutputLabelNames");
+        }
+
+        if (yamlConfig.containsKey("inferCounterTypeFromName")) {
+            cfg.inferCounterTypeFromName = (Boolean) yamlConfig.get("inferCounterTypeFromName");
         }
 
         // Default to includeObjectNames, but fall back to whitelistObjectNames for backward
@@ -623,7 +628,7 @@ public class JmxCollector implements MultiCollector {
                 fullname = fullname.toLowerCase();
             }
 
-            if (fullname.endsWith("_total")){
+            if (config.inferCounterTypeFromName && fullname.endsWith("_total")) {
                 type = "COUNTER";
             }
 
@@ -775,7 +780,7 @@ public class JmxCollector implements MultiCollector {
                     }
 
                     String type = rule.type;
-                    if (name.endsWith("_total")){
+                    if (config.inferCounterTypeFromName && name.endsWith("_total")) {
                         type = "COUNTER";
                     }
 
